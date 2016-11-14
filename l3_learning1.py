@@ -345,18 +345,27 @@ def _handle_flowstats_received (event):
   web_bytes = 0
   web_flows = 0
   web_packet = 0
+  flowlist= []
+  ipdict = {}
   for f in event.stats:
-    if f.match.tp_dst == 80 or f.match.tp_src == 80:
-      web_bytes += f.byte_count
-      web_packet += f.packet_count
-      web_flows += 1
+      log.debug("flow stat are %s",f)
+      if f.match.nw_dst == "10.0.1.2":
+        ipdict[f.match.nw_src]=f.packet_count 
+       
+      
+      #if f.match.tp_dst == 8080 or f.match.tp_src == 80:
+      #web_bytes += f.byte_count
+      #web_packet += f.packet_count
+      #web_flows += 1
   log.info("Web traffic from %s: %s bytes (%s packets) over %s flows", 
   dpidToStr(event.connection.dpid), web_bytes, web_packet, web_flows)
+  for i in ipdict.keys():
+    log.debug("ip src dict i got is : %s : pkt_count %s",i,ipdict[i])
 
 # handler to display port statistics received in JSON format
 def _handle_portstats_received (event):
   stats = flow_stats_to_list(event.stats)
-  log.debug("PortStatsReceived from %s: %s",dpidToStr(event.connection.dpid), stats)
+  #log.debug("PortStatsReceived from %s: %s",dpidToStr(event.connection.dpid), stats)
 
 def launch (fakeways="", arp_for_unknowns=None):
   fakeways = fakeways.replace(","," ").split()
