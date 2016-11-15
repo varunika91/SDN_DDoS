@@ -28,7 +28,7 @@ For each switch:
 from pox.core import core
 import pox
 log = core.getLogger()
-
+from pprint import pprint
 from pox.lib.packet.ethernet import ethernet, ETHER_BROADCAST
 from pox.lib.packet.ipv4 import ipv4
 from pox.lib.packet.arp import arp
@@ -46,7 +46,7 @@ from pox.openflow.of_json import *
 
 
 # Timeout for flows
-FLOW_IDLE_TIMEOUT = 10
+FLOW_IDLE_TIMEOUT = 200
 
 # Timeout for ARP entries
 ARP_TIMEOUT = 60 * 2
@@ -211,7 +211,7 @@ class l3_switch (EventMixin):
 
           msg = of.ofp_flow_mod(command=of.OFPFC_ADD,
                                 idle_timeout=FLOW_IDLE_TIMEOUT,
-                                hard_timeout=of.OFP_FLOW_PERMANENT,
+                                hard_timeout=100,
                                 buffer_id=event.ofp.buffer_id,
                                 actions=actions,
                                 match=of.ofp_match.from_packet(packet,
@@ -329,6 +329,7 @@ class l3_switch (EventMixin):
 
   # handler for timer function that sends the requests to all the
   # switches connected to the controller.
+
 def _timer_func ():
   for connection in core.openflow._connections.values():
     connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
@@ -337,9 +338,10 @@ def _timer_func ():
 
   # handler to display flow statistics received in JSON format
   # structure of event.stats is defined by ofp_flow_stats()
+gtime = 0 #time vale static
 def _handle_flowstats_received (event):
   stats = flow_stats_to_list(event.stats)
-  log.debug("FlowStatsReceived from %s: %s", dpidToStr(event.connection.dpid), stats)
+  log.debug("This is FlowStatsReceived from %s: %s", dpidToStr(event.connection.dpid), stats)
 
   # Get number of bytes/packets in flows for web traffic only
   web_bytes = 0
@@ -347,21 +349,29 @@ def _handle_flowstats_received (event):
   web_packet = 0
   flowlist= []
   ipdict = {}
+  global gtime
   for f in event.stats:
-      log.debug("flow stat are %s",f)
-      if f.match.nw_dst == "10.0.1.2":
-        ipdict[f.match.nw_src]=f.packet_count 
-       
-      
+      log.debug("Indivisual flow stat are %s",f)
+      pprint(f)
+     # if f.match.nw_dst == "10.0.1.2":
+      if (f.match.nw_dst,gtime) not in ipdict:
+        ipdict[(f.match.nw_dst,gtime)]=f.packet_count
+        
+      else:
+        ipdict[(f.match.nw_dst,gtime)]=f.packet_count 
+  #gtime = gtime+1      
+ # if(gtime ==2):
+  #  gtime =0      
       #if f.match.tp_dst == 8080 or f.match.tp_src == 80:
       #web_bytes += f.byte_count
       #web_packet += f.packet_count
       #web_flows += 1
-  log.info("Web traffic from %s: %s bytes (%s packets) over %s flows", 
-  dpidToStr(event.connection.dpid), web_bytes, web_packet, web_flows)
-  for i in ipdict.keys():
-    log.debug("ip src dict i got is : %s : pkt_count %s",i,ipdict[i])
+ # log.info("Web traffic from %s: %s bytes (%s packets) over %s flows", 
+ # dpidToStr(event.connection.dpid), web_bytes, web_packet, web_flows)
+  for (i,k) in ipdict.keys():
+    log.debug("ip src dict i got is : (%s,%s) : pkt_count %s",i,k,ipdict[(i,k)])
 
+  gtime = gtime+1      
 # handler to display port statistics received in JSON format
 def _handle_portstats_received (event):
   stats = flow_stats_to_list(event.stats)
