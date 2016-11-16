@@ -1,4 +1,4 @@
-# Copyright 2012-2013 James McCauley
+#n/__ Copyright 2012-2013 James McCauley
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -112,8 +112,11 @@ class l3_switch (EventMixin):
 
     # This timer handles expiring stuff
     self._expire_timer = Timer(5, self._handle_expiration, recurring=True)
-
+    
+    self.flag = 0
+    self.mytime = 0
     self.listenTo(core)
+    core.openflow.addListenerByName("FlowStatsReceived",self._handle_flowstats_received) 
 
   def _handle_expiration (self):
     # Called by a timer so that we can remove old items.
@@ -156,6 +159,9 @@ class l3_switch (EventMixin):
     log.debug("Up...")
 
   def _handle_PacketIn (self, event):
+    if(self.flag == 0):
+      Timer(5, self._timer_func, recurring=True)
+      self.flag = 1
     dpid = event.connection.dpid
     inport = event.port
     packet = event.parsed
@@ -319,7 +325,7 @@ class l3_switch (EventMixin):
                   return
 
       # Didn't know how to answer or otherwise handle this ARP, so just flood it
-      log.debug("%i %i flooding ARP %s %s => %s" % (dpid, inport,
+      log.debug("%i %i flooding ARP %s %s => %s" :% (dpid, inport,
        {arp.REQUEST:"request",arp.REPLY:"reply"}.get(a.opcode,
        'op:%i' % (a.opcode,)), str(a.protosrc), str(a.protodst)))
 
@@ -329,60 +335,62 @@ class l3_switch (EventMixin):
 
   # handler for timer function that sends the requests to all the
   # switches connected to the controller.
-
-def _timer_func ():
-  for connection in core.openflow._connections.values():
-    connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
-   # connection.send(of.ofp_stats_request(body=of.ofp_port_stats_request()))
-  log.debug("Sent %i flow/port stats request(s)", len(core.openflow._connections))
+  def _timer_func (self):
+    for connection in core.openflow._connections.values():
+      connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
+       # connection.send(of.ofp_stats_request(body=of.ofp_port_stats_request()))
+    log.debug("Sent %i flow/port stats request(s)", len(core.openflow._connections))
 
   # handler to display flow statistics received in JSON format
   # structure of event.stats is defined by ofp_flow_stats()
-mytime = 0 #time vale static
-def _handle_flowstats_received (event):
-  stats = flow_stats_to_list(event.stats)
-  dpidi = dpidToStr(event.connection.dpid)
+  #mytime = 0 #time vale static
+  def _handle_flowstats_received (self,event):
+    stats = flow_stats_to_list(event.stats)
+    dpidi = dpidToStr(event.connection.dpid)
+    print "mydpid",dpidi
   #packeti= event.parsed
-  #log.debug("packet i gotis %s",type(event))
+    log.debug("packet i gotis %s",event.stats)
  # if(type(event) == "pox.openflow.FlowStatsReceived" 
  # log.debug("This is FlowStatsReceived from %s: %s", dpidToStr(event.connection.dpid), stats)
 
 #  ipdict[(f.match.nw_dst,1,dpidi)]= [];
  # ipdict[(f.match.nw_dst,3,dpidi)]
   # Get number of bytes/packets in flows for web traffic only
-  web_bytes = 0
-  web_flows = 0
-  web_packet = 0
-  flowlist= []
-  ipdict = {}
-  global mytime
-  log.debug("my time is :%d",mytime)
+    web_bytes = 0
+    web_flows = 0
+    web_packet = 0
+    flowlist= []
+    ipdict = {}
+   # global mytime
+    log.debug("my time is :%d",self.mytime)
  # if(mytime ==5):
   #  mytime= 0
   
 
-  if (dpidi== "56-6e-e7-22-4d-4f" and event.stats):
-    for f in event.stats:
+    if (dpidi== "56-6e-e7-22-4d-4f" and event.stats):
+      print "i m here"
+      for f in event.stats:
      # log.debug("Indivisual flow stat are %s",f)
        # pprint(f)
      # if f.match.nw_dst == "10.0.1.2":
         if (f.match.nw_dst,mytime,dpidi) not in ipdict:
+          print "my count",f.packet_count
           ipdict[(f.match.nw_dst,mytime,dpidi)]=f.packet_count
-          if (mytime == 1 or mytime == 2):
+          if (self.mytime == 1 or self.mytime == 2):
             #if( ipdict[(f.match.nw_dst,(mytime-2),dpidi)] not in ipdict):
              # ipdict[(f.match.nw_dst,(mytime-2),dpidi)]= 0
-            log.debug("time inside is %s",mytime)      
-            ipdict[(f.match.nw_dst,mytime,dpidi)] = f.packet_count #- ipdict[(f.match.nw_dst,(mytime-2),dpidi)]
+            log.debug("time inside is %s",self.mytime)      
+            ipdict[(f.match.nw_dst,self.mytime,dpidi)] = f.packet_count #- ipdict[(f.match.nw_dst,(mytime-2),dpidi)]
             
         #mytime=mytime+1     
         else:
           ipdict[(f.match.nw_dst,mytime,dpidi)]=f.packet_count
-          if (mytime == 1 or mytime == 2):
-            ipdict[(f.match.nw_dst,mytime,dpidi)] = f.packet_count - ipdict[(f.match.nw_dst,(mytime-1),dpidi)]
+          if (self.mytime == 1 or self.mytime == 2):
+            ipdict[(f.match.nw_dst,self.mytime,dpidi)] = f.packet_count - ipdict[(f.match.nw_dst,(self.mytime-1),dpidi)]
         #mytime=mytime+1 
-    mytime = mytime+1      
-    if(mytime ==3):
-      mytime= 0
+    self.mytime = self.mytime+1      
+    if(self.mytime ==3):
+      self.mytime= 0
   #    ipdict.clear()
       
   #   mytime =0      
@@ -392,14 +400,15 @@ def _handle_flowstats_received (event):
       #web_flows += 1
  # log.info("Web traffic from %s: %s bytes (%s packets) over %s flows", 
  # dpidToStr(event.connection.dpid), web_bytes, web_packet, web_flows)
-    for (i,k,j) in ipdict.keys():
-      log.debug("ip src dict i got is : (%s,%s,%s) : pkt_count %s",i,k,j,ipdict[(i,k,j)])
+    #for (i,k,j) in ipdict.keys():
+     # log.debug("ip src dict i got is : (%s,%s,%s) : pkt_count %s",i,k,j,ipdict[(i,k,j)])
+    print ipdict
  # if(mytime ==5):
   #  mytime= 0
  # mytime= mytime+1      
 # handler to display port statistics received in JSON format
-def _handle_portstats_received (event):
-  stats = flow_stats_to_list(event.stats)
+  def _handle_portstats_received (self,event):
+    stats = flow_stats_to_list(event.stats)
   #log.debug("PortStatsReceived from %s: %s",dpidToStr(event.connection.dpid), stats)
 
 def launch (fakeways="", arp_for_unknowns=None):
@@ -411,8 +420,9 @@ def launch (fakeways="", arp_for_unknowns=None):
     arp_for_unknowns = str_to_bool(arp_for_unknowns)
   core.registerNew(l3_switch, fakeways, arp_for_unknowns)
   # attach handsers to listners
-  core.openflow.addListenerByName("FlowStatsReceived", _handle_flowstats_received) 
-#  core.openflow.addListenerByName("PortStatsReceived",  _handle_portstats_received) 
+  #core.openflow.addListenerByName("FlowStatsReceived", _handle_flowstats_received) 
+
+  #core.openflow.addListenerByName("PortStatsReceived",  _handle_portstats_received) 
 
   # timer set to execute every five seconds
-  Timer(5, _timer_func, recurring=True)
+  #Timer(5, _timer_func, recurring=True)
