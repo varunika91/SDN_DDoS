@@ -211,7 +211,7 @@ class l3_switch (EventMixin):
 
           msg = of.ofp_flow_mod(command=of.OFPFC_ADD,
                                 idle_timeout=FLOW_IDLE_TIMEOUT,
-                                hard_timeout=100,
+                                hard_timeout=1000,
                                 buffer_id=event.ofp.buffer_id,
                                 actions=actions,
                                 match=of.ofp_match.from_packet(packet,
@@ -333,45 +333,70 @@ class l3_switch (EventMixin):
 def _timer_func ():
   for connection in core.openflow._connections.values():
     connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
-    connection.send(of.ofp_stats_request(body=of.ofp_port_stats_request()))
+   # connection.send(of.ofp_stats_request(body=of.ofp_port_stats_request()))
   log.debug("Sent %i flow/port stats request(s)", len(core.openflow._connections))
 
   # handler to display flow statistics received in JSON format
   # structure of event.stats is defined by ofp_flow_stats()
-gtime = 0 #time vale static
+mytime = 0 #time vale static
 def _handle_flowstats_received (event):
   stats = flow_stats_to_list(event.stats)
-  log.debug("This is FlowStatsReceived from %s: %s", dpidToStr(event.connection.dpid), stats)
+  dpidi = dpidToStr(event.connection.dpid)
+  #packeti= event.parsed
+  #log.debug("packet i gotis %s",type(event))
+ # if(type(event) == "pox.openflow.FlowStatsReceived" 
+ # log.debug("This is FlowStatsReceived from %s: %s", dpidToStr(event.connection.dpid), stats)
 
+#  ipdict[(f.match.nw_dst,1,dpidi)]= [];
+ # ipdict[(f.match.nw_dst,3,dpidi)]
   # Get number of bytes/packets in flows for web traffic only
   web_bytes = 0
   web_flows = 0
   web_packet = 0
   flowlist= []
   ipdict = {}
-  global gtime
-  for f in event.stats:
-      log.debug("Indivisual flow stat are %s",f)
-      pprint(f)
+  global mytime
+  log.debug("my time is :%d",mytime)
+ # if(mytime ==5):
+  #  mytime= 0
+  
+
+  if (dpidi== "56-6e-e7-22-4d-4f" and event.stats):
+    for f in event.stats:
+     # log.debug("Indivisual flow stat are %s",f)
+       # pprint(f)
      # if f.match.nw_dst == "10.0.1.2":
-      if (f.match.nw_dst,gtime) not in ipdict:
-        ipdict[(f.match.nw_dst,gtime)]=f.packet_count
-        
-      else:
-        ipdict[(f.match.nw_dst,gtime)]=f.packet_count 
-  #gtime = gtime+1      
- # if(gtime ==2):
-  #  gtime =0      
+        if (f.match.nw_dst,mytime,dpidi) not in ipdict:
+          ipdict[(f.match.nw_dst,mytime,dpidi)]=f.packet_count
+          if (mytime == 1 or mytime == 2):
+            #if( ipdict[(f.match.nw_dst,(mytime-2),dpidi)] not in ipdict):
+             # ipdict[(f.match.nw_dst,(mytime-2),dpidi)]= 0
+            log.debug("time inside is %s",mytime)      
+            ipdict[(f.match.nw_dst,mytime,dpidi)] = f.packet_count #- ipdict[(f.match.nw_dst,(mytime-2),dpidi)]
+            
+        #mytime=mytime+1     
+        else:
+          ipdict[(f.match.nw_dst,mytime,dpidi)]=f.packet_count
+          if (mytime == 1 or mytime == 2):
+            ipdict[(f.match.nw_dst,mytime,dpidi)] = f.packet_count - ipdict[(f.match.nw_dst,(mytime-1),dpidi)]
+        #mytime=mytime+1 
+    mytime = mytime+1      
+    if(mytime ==3):
+      mytime= 0
+  #    ipdict.clear()
+      
+  #   mytime =0      
       #if f.match.tp_dst == 8080 or f.match.tp_src == 80:
       #web_bytes += f.byte_count
       #web_packet += f.packet_count
       #web_flows += 1
  # log.info("Web traffic from %s: %s bytes (%s packets) over %s flows", 
  # dpidToStr(event.connection.dpid), web_bytes, web_packet, web_flows)
-  for (i,k) in ipdict.keys():
-    log.debug("ip src dict i got is : (%s,%s) : pkt_count %s",i,k,ipdict[(i,k)])
-
-  gtime = gtime+1      
+    for (i,k,j) in ipdict.keys():
+      log.debug("ip src dict i got is : (%s,%s,%s) : pkt_count %s",i,k,j,ipdict[(i,k,j)])
+ # if(mytime ==5):
+  #  mytime= 0
+ # mytime= mytime+1      
 # handler to display port statistics received in JSON format
 def _handle_portstats_received (event):
   stats = flow_stats_to_list(event.stats)
@@ -387,7 +412,7 @@ def launch (fakeways="", arp_for_unknowns=None):
   core.registerNew(l3_switch, fakeways, arp_for_unknowns)
   # attach handsers to listners
   core.openflow.addListenerByName("FlowStatsReceived", _handle_flowstats_received) 
-  core.openflow.addListenerByName("PortStatsReceived",  _handle_portstats_received) 
+#  core.openflow.addListenerByName("PortStatsReceived",  _handle_portstats_received) 
 
   # timer set to execute every five seconds
   Timer(5, _timer_func, recurring=True)
