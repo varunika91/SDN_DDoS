@@ -175,8 +175,8 @@ class l3_switch (EventMixin):
       return
 
     if isinstance(packet.next, ipv4):
-      log.debug("%i %i IP %s => %s", dpid,inport,
-                packet.next.srcip,packet.next.dstip)
+     # log.debug("%i %i IP %s => %s", dpid,inport,
+            #    packet.next.srcip,packet.next.dstip)
 
       # Send any waiting packets...
       self._send_lost_buffers(dpid, packet.next.srcip, packet.src, inport)
@@ -339,9 +339,9 @@ class FlowStats:
     self.X2 = 0
     self.X3 = 0 
     self.h = {}
-    self.a1 = 0 
-    self.a2= 0 
-    self.a3 = 0 
+    self.a1 = 0.2 
+    self.a2= 0.3 
+    self.a3 = 0.5 
     self.delta = 0
     self.std = 0
     self.lamda = 0
@@ -349,7 +349,19 @@ class FlowStats:
     self.mytime = 0
     self.ddoscheck = 0
     self.alert_server = 0 
-
+    self.p_list = []
+    self.prevX1=0
+    self.prevX2=0
+    self.prevX3=0
+    self.p_list.append(0)
+    self.p_list.append(0)
+    self.p_list.append(0)
+    self.alert_flag = 0
+    self.ddosstartflag =0
+    self.Xt1= {}
+    self.Xt2 = {}
+    self.Xt3 = {}
+    self.mean_entropy = 0.0
     core.openflow.addListenerByName("FlowStatsReceived", self._handle_flowstats_received) 
     #core.openflow.addListenerByName("PortStatsReceived",  _handle_portstats_received) 
     #timer set to execute every five seconds
@@ -359,22 +371,27 @@ class FlowStats:
   #switches connected to the controller.
   def _timer_func (self):
     for connection in core.openflow._connections.values():
+      
       print "connection is" 
       print connection
+      #if openflowconnection[1]==2:
       connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
 	  # connection.send(of.ofp_stats_request(body=of.ofp_port_stats_request()))
-    log.debug("Sent %i flow/port stats request(s)", len(core.openflow._connections))
+      log.debug("Sent %i flow/port stats request(s)", len(core.openflow._connections))
 
 	  # handler to display flow statistics received in JSON format
 	  # structure of event.stats is defined by ofp_flow_stats()
 	#mytime = 0 #time vale static
   def _handle_flowstats_received (self,event):
     stats = flow_stats_to_list(event.stats)
-	#dpidi = dpidToStr(event.connection.dpid)
+    dpidi = dpidToStr(event.connection.dpid)
+    print "dpid to str gives:", dpidi
+    if dpidi == "00-00-00-00-00-01":
+      return
 	#packeti= event.parsed
 	#log.debug("packet i gotis %s",type(event))
     # if(type(event) == "pox.openflow.FlowStatsReceived"	
-    log.debug("This is FlowStatsReceived from %s: %s", dpidToStr(event.connection.dpid), stats)
+#    log.debug("This is FlowStatsReceived from %s: %s", dpidToStr(event.connection.dpid), stats)
 
 	#  ipdict[(f.match.nw_dst,1,dpidi)]= [];
 	# ipdict[(f.match.nw_dst,3,dpidi)]
@@ -387,8 +404,7 @@ class FlowStats:
 	#global mytime
     #log.debug("my time is :%d",mytime)
 	# if(mytime ==5):
-	#  mytime= 0
-	
+	#  mytime= 0 	
 	#if (dpidi== "56-6e-e7-22-4d-4f" and event.stats):
     ##if event.connection.dpid not in self.timemap:
       ##self.timemap[event.connection.dpid] = 0
@@ -397,14 +413,18 @@ class FlowStats:
     for f in event.stats:
       #log.debug("pratik %s", f.match.nw_dst)
       if f.match.nw_dst == IPAddr("10.0.1.2"):
-        #log.debug("I am in if1")
+        log.debug("I am in if1: %d",f.packet_count)
         self.X1 = self.X1 + f.packet_count
       if f.match.nw_dst == IPAddr("10.0.1.3"):
         #log.debug("I am in if2")
+        log.debug("I am in if2: %d",f.packet_count)
         self.X2 = self.X2 + f.packet_count
       if f.match.nw_dst == IPAddr("10.0.1.4"):
         self.X3 = self.X3 + f.packet_count
-
+        log.debug("I am in if3: %d",f.packet_count)
+    print " packet cout for X1 is:",self.X1
+    print " packet cout for X2 is:",self.X2
+    print " packet cout for X3 is:",self.X3
     self.cal_prob(self.X1,self.X2,self.X3)
     self.cal_entropy(self.p1,self.p2,self.p3,self.mytime)
     if (self.mytime >=3):
@@ -413,7 +433,10 @@ class FlowStats:
       self.cal_delta(self.mytime)
       self.check_ddos(self.h, self.mytime, self.mean_entropy)
       self.alert_ddos()
-
+    print "============================================================================="  
+    self.X1 = 0
+    self.X2 = 0
+    self.x3 = 0
 	  # log.debug("Indivisual flow stat are %s",f)
 	  # pprint(f)
 	  # if f.match.nw_dst == "10.0.1.2":
@@ -462,39 +485,109 @@ class FlowStats:
 
   def cal_prob(self,x1,x2,x3):
     if(x1 != 0 or x2 != 0 or x3 != 0):
-      self.p1 = x1/(x1+x2+x3)
-      self.p2 = x2/(x1+x2+x3)
-      self.p3 = x3/(x1+x2+x3)
+      print "i am calculating probability",x1,x2,x3
+      self.p1 = float(x1)/(x1+x2+x3)
+      self.p2 = float(x2)/(x1+x2+x3)
+      self.p3 =float(x3)/(x1+x2+x3)
+      """
       if(self.p1 == 0):
         self.p1 = 1
       if(self.p2 == 0):
         self.p2 = 1
       if(self.p3 == 0):
         self.p3 = 1
+      """
+      self.p_list[0]=(self.p1)
+      self.p_list[1]=(self.p2)
+      self.p_list[2]=(self.p3)
+      print "time:",self.mytime,"the probabaility list ",self.p_list
 
   def cal_entropy(self,prob1,prob2,prob3,time1):
-    self.h[time1] = (prob1 * (math.log10(1/prob1))) +(prob2 * (math.log10(1/prob2))) +(prob3 * (math.log10(1/prob3)))
+    self.h[time1] = 0
+    for i in self.p_list:
+      if(i):
+        print "entropy prob",i 
+        self.h[time1] = float(self.h[time1])+ (i*(math.log10(float(1)/i)))
 
+    print "time:", time1, "entropy",self.h[time1] 
+    """
+        self.h[time1] = (prob1 * (math.log10(1/prob1))) +(prob2 * (math.log10(1/prob2))) +(prob3 * (math.log10(1/prob3)))
+    """
   def cal_mean_entropy(self,h,time1):
-    self.mean_entropy = (self.a1*h[time1-2]) + (self.a2*h[time1 - 1]) + (self.a3*h[time1])
-    self.mean_entropy = self.mean_entropy /math.log10(3)
+  #  print "time: ",time1, "h value in cal_mean_ent", h
+    self.mean_entropy = float(self.a1*h[time1-2]) + float(self.a2*h[time1 - 1]) + float(self.a3*h[time1])
+    print "time:", time1,"mean entropy before div:", self.mean_entropy
+    self.mean_entropy = float(self.mean_entropy) / math.log10(3)
+    print "time:", time1,"mean entropy:", self.mean_entropy
 
   def check_ddos(self,h,time1,mean_ent):
-    if((h[time1] - mean_ent) > self.delta):
+    print "delta i gotis ",self.delta
+    print "diff i got is ",(mean_ent - h[time1])
+  #  if((mean_ent - h[time1]) > 0.1):
+    if((0.63 - h[time1]) > 0.4):
+      print "start ddos check now"
       self.ddos = 1 + self.ddos
-    self.ddoscheck += 1
+      self.ddosstartflag=1
+      self.monitor_dst_attacked(self.mytime)
+    if(self.ddosstartflag ==1):
+      self.ddoscheck += 1
+      if(self.ddoscheck == 6):
+        self.ddoscheck = 0
+        self.ddosstartflag =0
+
   def alert_ddos(self):
-    if((self.ddoscheck > 5) and ((self.ddos/self.ddoscheck ) >= 0.8)):
+    if((self.ddoscheck >= 5) and ((self.ddos/self.ddoscheck ) >= 0.6)):
+      print " i am 4/5 statemnt"
       self.alert_server = 1
       self.ddoscheck = 0
       self.ddos = 0 
+      self.alert_flag =1
     
   def cal_delta(self,time1):
     self.std = math.sqrt((((self.mean_entropy - self.h[time1]) **2) + ((self.mean_entropy - self.h[time1-1]) **2) +((self.mean_entropy - self.h[time1-2]) **2))/3)
     self.lamda = 1.2
     self.delta = self.std *self.lamda
+    print "time:",time1,"delta:",self.delta
 
-
+  def sendattackmsg(sname):
+    sock = socket(AF_INET, SOCK_STREAM)
+    if sname == "Server1":
+      HOST = '10.0.1.2'
+    if sname == "Server2":
+      HOST = '10.0.1.3'
+    if sname == "Server3":
+      HOST = '10.0.1.4'
+    PORT = 3000
+    ADDR = (HOST, PORT)
+    client.connect(ADDR)
+    client.send("Attacked" % sname)
+    
+  def monitor_dst_attacked(self,time1):
+    if self.alert_flag == 0:
+      self.prevX1= self.X1
+      self.prevX2= self.X2
+      self.prevX3= self.X3
+      self.Xt1[time1] = self.X1
+      self.Xt2[time1] = self.X2
+      self.Xt3[time1] = self.X3
+    if self.alert_flag :
+      print " monitor alert flag"
+      self.Xt1[time1] = self.X1
+      self.Xt2[time1] = self.X2
+      self.Xt3[time1] = self.X3
+      print "rate 1", float(self.Xt1[time1] - self.Xt1[time1-1])/5
+      print "rate 2", float(self.Xt2[time1] - self.Xt2[time1-1])/5
+      print "rate 3", float(self.Xt3[time1] - self.Xt3[time1-1])/5
+      
+      if( float(self.Xt1[time1] - self.Xt1[time1-1])/5 > 80):
+        print "Serer 1 attacked"
+#        sendattackmsg("Server1")      
+      if( float(self.Xt2[time1] - self.Xt2[time1-1])/5 > 80):
+        print "Serer 2 attacked"
+#        sendattackmsg("Server2")
+      if( float(self.Xt3[time1] - self.Xt3[time1-1])/5 > 80):
+        print "Serer 3 attacked"
+#        sendattackmsg("Server3")
 
 def launch (fakeways="", arp_for_unknowns=None):
   fakeways = fakeways.replace(","," ").split()
