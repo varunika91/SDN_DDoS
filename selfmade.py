@@ -23,8 +23,8 @@ class Server():
     self.attack = socket(AF_INET,SOCK_STREAM)
  
     #bind socket to address
-    self.serv.bind(self.host, self.port)
-    self.attack.bind(self.host, 3000)
+    self.serv.bind((self.host, self.port))
+    self.attack.bind((self.host, 3000))
 
     #listen 
     self.attack.listen(5)
@@ -32,6 +32,7 @@ class Server():
     print 'Server up and running! Listening for incoming connections... and attack msg from controller'
 
   def acceptConnections(self):
+    print "listening from client"
     conn, addr = self.serv.accept()
     pid = os.fork()
     if pid == 0:
@@ -102,9 +103,11 @@ class Server():
     data = conn1.recv(1024)
     print "Attack Message from " + addr1[0] + ":" + data
     if "Attacked" in data:
+      print "Captcha mode enabled due to attcak msg"
       self.captcha_mode = 1   
   
-  def acceptattackmsg():
+  def acceptattackmsg(self,x):
+    print"listening from controller"
     while 1:
       conn1,addr1 = self.attack.accept()
       pid = os.fork()
@@ -126,7 +129,7 @@ if __name__ == '__main__':
   attackedserver = Server(HOST, PORT)
   
   #attackedserver.collectData()
-  thread.start_new_thread(attackedserver.acceptattackmsg,0)
+  thread.start_new_thread(attackedserver.acceptattackmsg,(0,))
 
   while 1:
     attackedserver.acceptConnections()

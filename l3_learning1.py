@@ -32,10 +32,11 @@ from pprint import pprint
 from pox.lib.packet.ethernet import ethernet, ETHER_BROADCAST
 from pox.lib.packet.ipv4 import ipv4
 from pox.lib.packet.arp import arp
+from pox.lib.packet.tcp import tcp
 from pox.lib.addresses import IPAddr, EthAddr
 from pox.lib.util import str_to_bool, dpid_to_str
 from pox.lib.recoco import Timer
-
+from socket import *
 import pox.openflow.libopenflow_01 as of
 
 from pox.lib.revent import *
@@ -43,7 +44,7 @@ from pox.lib.revent import *
 import time
 # include as part of the betta branch
 from pox.openflow.of_json import *
-
+import struct
 
 # Timeout for flows
 FLOW_IDLE_TIMEOUT = 200
@@ -362,10 +363,23 @@ class FlowStats:
     self.Xt2 = {}
     self.Xt3 = {}
     self.mean_entropy = 0.0
+    self.sock = socket.socket(AF_INET, SOCK_STREAM)
     core.openflow.addListenerByName("FlowStatsReceived", self._handle_flowstats_received) 
+    #self.sock.connect(('10.0.1.2',3000))
     #core.openflow.addListenerByName("PortStatsReceived",  _handle_portstats_received) 
     #timer set to execute every five seconds
     Timer(5, self._timer_func, recurring=True)
+
+  def carry_around_add(a, b):
+    c = a + b
+    return (c & 0xffff) + (c >> 16)
+  
+  def checksum(msg):
+    s = 0
+    for i in range(0, len(msg), 2):
+        w = ord(msg[i]) + (ord(msg[i+1]) << 8)
+        s = carry_around_add(s, w)
+    return ~s & 0xffff
 
   #handler for timer function that sends the requests to all the
   #switches connected to the controller.
@@ -521,7 +535,7 @@ class FlowStats:
     print "time:", time1,"mean entropy:", self.mean_entropy
 
   def check_ddos(self,h,time1,mean_ent):
-    print "delta i gotis ",self.delta
+    print "delta i got is ",self.delta
     print "diff i got is ",(mean_ent - h[time1])
   #  if((mean_ent - h[time1]) > 0.1):
     if((0.63 - h[time1]) > 0.4):
@@ -548,10 +562,13 @@ class FlowStats:
     self.lamda = 1.2
     self.delta = self.std *self.lamda
     print "time:",time1,"delta:",self.delta
-
-  def sendattackmsg(sname):
-    sock = socket(AF_INET, SOCK_STREAM)
+  """
+  def sendattackmsg(self,sname):
+    #sock = socket.socket(AF_INET, SOCK_STREAM)
+    HOST = '0'
+    print "value of sname", sname
     if sname == "Server1":
+      print "entered in server1"
       HOST = '10.0.1.2'
     if sname == "Server2":
       HOST = '10.0.1.3'
@@ -559,9 +576,42 @@ class FlowStats:
       HOST = '10.0.1.4'
     PORT = 3000
     ADDR = (HOST, PORT)
-    client.connect(ADDR)
-    client.send("Attacked" % sname)
-    
+    print "before connect in sendattackmsg()",HOST
+    #self.sock.connect((ADDR))
+    self.sock.send("Attacked" % sname)
+    print "Attack msg to ", sname, " sent"
+  """
+  def sendattackmsg(self,sname):
+    payload = "Attacked" + sname
+    tcp_packet = tcp()
+    tcp_packet.srcport = 3000
+    tcp_packet.dstport = 3000
+    tcp_packet.payload = payload
+    tcp_packet.seq = 100
+    tcp_packet.off = 5
+
+    ipv4_packet = ipv4()
+    ipv4_packet.iplen = ipv4.MIN_LEN + len(tcp_packet)
+    ipv4_packet.protocol = ipv4.TCP_PROTOCOL
+    ipv4_packet.dstip = IPAddr('10.0.1.2')
+    ipv4_packet.srcip = IPAddr('10.0.1.10')
+    ipv4_packet.set_payload(tcp_packet)
+    #data = ipv4_packet.split()
+    #data = map(lambda x: int(x,16), data)
+    data = map(lambda x: int(x,16), ipv4_packet)
+    data = struct.pack("%dB" % len(data), *data)
+    ipv4_packet.csum = checksum(data)    
+
+    eth_packet = ethernet()
+    eth_packet.set_payload(ipv4_packet)
+    eth_packet.dst = EthAddr('00:00:00:00:00:01')
+    eth_packet.src = EthAddr('00:00:00:00:00:0a')
+    eth_packet.type = ethernet.IP_TYPE
+    msg = of.ofp_packet_out()
+    msg.data = eth_packet.pack()
+    msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD))
+    event.connection.send(msg)
+      
   def monitor_dst_attacked(self,time1):
     if self.alert_flag == 0:
       self.prevX1= self.X1
@@ -581,13 +631,13 @@ class FlowStats:
       
       if( float(self.Xt1[time1] - self.Xt1[time1-1])/5 > 80):
         print "Serer 1 attacked"
-#        sendattackmsg("Server1")      
+        self.sendattackmsg("Server1")      
       if( float(self.Xt2[time1] - self.Xt2[time1-1])/5 > 80):
         print "Serer 2 attacked"
-#        sendattackmsg("Server2")
+        self.sendattackmsg("Server2")
       if( float(self.Xt3[time1] - self.Xt3[time1-1])/5 > 80):
         print "Serer 3 attacked"
-#        sendattackmsg("Server3")
+        self.sendattackmsg("Server3")
 
 def launch (fakeways="", arp_for_unknowns=None):
   fakeways = fakeways.replace(","," ").split()
