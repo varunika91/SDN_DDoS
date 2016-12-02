@@ -2,6 +2,14 @@ import time, os, sys, string, threading, math, random
 from socket import * 
 import os
 import thread
+from threading import Thread
+
+from time import sleep
+from socket import socket 
+from struct import * 
+import datetime
+#import pcapy 
+import sys 
 
 class Server():
   def __init__(self, host, port):
@@ -36,7 +44,7 @@ class Server():
     conn, addr = self.serv.accept()
     pid = os.fork()
     if pid == 0:
-      serv.close()
+      self.serv.close()
       self.handle_request(conn,addr)
       conn.close()
       os._exit(0)
@@ -46,7 +54,7 @@ class Server():
   def handle_request(self,conn,addr):
     data = conn.recv(1024)
     print "Message From " + addr[0] + " : " + data
-    print 'Connected by ', addr, 'Number of connections: ', self.num_connections
+    #print 'Connected by ', addr, 'Number of connections: ', self.num_connections
     print ">>>>>>>>>>>>>"
     if addr[0] not in self.blacklist.keys():	
       command, path, httpv= data.split()   #strip HTTP request "GET /%s HTTP/1.1\r\n" to get filename
@@ -62,11 +70,22 @@ class Server():
 
       if self.captcha_mode == 1:
       	captcha = "I am captcha"
-      	self.msg = "Enter the captcha u see"
+        self.msg = "Authenticate"
       	conn.send(self.msg)
-
+        data = conn.recv(1024)
+        print "before checking",data
+        if data == self.msg:
+          print data
+          print "u r authorised"
+          fd = open(datapath)
+          self.msg = fd.read()
+          fd.close
+          conn.send(self.msg)
       else:
-      	self.msg = "u are nt authorized"
+      	print "I am sending the file"
+        fd = open(datapath)
+        self.msg =  fd.read()
+        fd.close
       	conn.send(self.msg)
     else:
       self.blacklist[adr[0]] +=1
@@ -101,7 +120,7 @@ class Server():
 
   def handle_attack_msg(self,conn1,addr1):
     data = conn1.recv(1024)
-    print "Attack Message from " + addr1[0] + ":" + data
+    #print "Attack Message from " + addr1[0] + ":" + data
     if "Attacked" in data:
       print "Captcha mode enabled due to attcak msg"
       self.captcha_mode = 1   
@@ -118,7 +137,21 @@ class Server():
         os._exit(0)
       else:
         conn1.close()
-            
+  
+  def new_thr_fun(self,args):
+    cap = pcapy.open_live("eth0" , 65536 , 1 , 0)
+    header, packet = cap.next()
+    parse_packet(packet) 
+  
+  def parse_packet(self,packet) :
+    eth_length = 14 
+    eth_header = packet[:eth_header]
+    eth = unpack('!6s6sH' , eth_header)
+    eth_protocol = socket.ntohs(eth[2])
+    if eth_protocol == 0x614:
+      self.captcha_mode = 1
+      return 
+    return         
 
 HOST = '10.0.1.2'
 PORT = 80
@@ -130,6 +163,6 @@ if __name__ == '__main__':
   
   #attackedserver.collectData()
   thread.start_new_thread(attackedserver.acceptattackmsg,(0,))
-
+  #thread = Thread(target = attackedserver.new_thr_fun, args = (10, ))
   while 1:
     attackedserver.acceptConnections()

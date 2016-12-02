@@ -36,7 +36,8 @@ from pox.lib.packet.tcp import tcp
 from pox.lib.addresses import IPAddr, EthAddr
 from pox.lib.util import str_to_bool, dpid_to_str
 from pox.lib.recoco import Timer
-from socket import *
+#from socket import *
+import socket
 import pox.openflow.libopenflow_01 as of
 
 from pox.lib.revent import *
@@ -45,7 +46,8 @@ import time
 # include as part of the betta branch
 from pox.openflow.of_json import *
 import struct
-
+#import pycap.constants, pycap.protocol, pycap.inject
+ETHERTYPE_IP=0x614
 # Timeout for flows
 FLOW_IDLE_TIMEOUT = 200
 
@@ -363,7 +365,7 @@ class FlowStats:
     self.Xt2 = {}
     self.Xt3 = {}
     self.mean_entropy = 0.0
-    self.sock = socket.socket(AF_INET, SOCK_STREAM)
+    self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     core.openflow.addListenerByName("FlowStatsReceived", self._handle_flowstats_received) 
     #self.sock.connect(('10.0.1.2',3000))
     #core.openflow.addListenerByName("PortStatsReceived",  _handle_portstats_received) 
@@ -562,7 +564,7 @@ class FlowStats:
     self.lamda = 1.2
     self.delta = self.std *self.lamda
     print "time:",time1,"delta:",self.delta
-  """
+  
   def sendattackmsg(self,sname):
     #sock = socket.socket(AF_INET, SOCK_STREAM)
     HOST = '0'
@@ -577,9 +579,11 @@ class FlowStats:
     PORT = 3000
     ADDR = (HOST, PORT)
     print "before connect in sendattackmsg()",HOST
-    #self.sock.connect((ADDR))
-    self.sock.send("Attacked" % sname)
+    self.sock.connect((HOST, PORT))
+    #self.sock.send("Attacked" % sname)
+    self.sock.send("Attacked")
     print "Attack msg to ", sname, " sent"
+ 
   """
   def sendattackmsg(self,sname):
     payload = "Attacked" + sname
@@ -611,7 +615,13 @@ class FlowStats:
     msg.data = eth_packet.pack()
     msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD))
     event.connection.send(msg)
-      
+  """
+  def send_captcha():
+    data = 'Attack'
+    ethernet = pycap.protocol.ethernet(type=pycap.constants.ethernet.ETHERTYPE_IP, source='00:03:93:44:a9:92',destination='00:50:ba:8f:c4:5f')
+    packet = (ethernet, data)
+    pycap.inject.inject().inject(packet)  
+  
   def monitor_dst_attacked(self,time1):
     if self.alert_flag == 0:
       self.prevX1= self.X1
@@ -630,13 +640,13 @@ class FlowStats:
       print "rate 3", float(self.Xt3[time1] - self.Xt3[time1-1])/5
       
       if( float(self.Xt1[time1] - self.Xt1[time1-1])/5 > 80):
-        print "Serer 1 attacked"
+        print "Server 1 attacked"
         self.sendattackmsg("Server1")      
       if( float(self.Xt2[time1] - self.Xt2[time1-1])/5 > 80):
-        print "Serer 2 attacked"
+        print "Server 2 attacked"
         self.sendattackmsg("Server2")
       if( float(self.Xt3[time1] - self.Xt3[time1-1])/5 > 80):
-        print "Serer 3 attacked"
+        print "Server 3 attacked"
         self.sendattackmsg("Server3")
 
 def launch (fakeways="", arp_for_unknowns=None):

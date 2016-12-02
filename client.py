@@ -7,7 +7,7 @@ PORT = 80
 ADDR = (HOST,PORT)
 BUFSIZE = 2048
 
-message='cc.txt'
+message='/pp.txt'
 
 client = socket(AF_INET,SOCK_STREAM)
 client.connect((ADDR))
@@ -19,7 +19,7 @@ x = data
 if "Authenticate" in x:
 	print data	
 	inp = raw_input()
-	client.send("Authenticate yourself by entering the following CAPTCHA: %s" % inp)
+	client.send( "%s" % inp)
 
 	data = client.recv(BUFSIZE)
 	if ("Authentication Failed" in data):
